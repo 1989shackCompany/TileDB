@@ -74,6 +74,15 @@ class Range {
     set_range(range, range_size, range_start_size);
   }
 
+  Range(const void* start, const void* end, uint64_t type_size)
+      : Range() {
+    range_.resize(2 * type_size);
+    std::memcpy(&range_[0], start, type_size);
+    std::memcpy(&range_[type_size], end, type_size);
+    range_start_size_ = type_size;
+    var_size_ = false;
+  }
+
   /** Copy constructor. */
   Range(const Range&) = default;
 

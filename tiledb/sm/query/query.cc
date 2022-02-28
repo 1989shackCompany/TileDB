@@ -36,6 +36,9 @@
 #include "tiledb/common/logger.h"
 #include "tiledb/common/memory.h"
 #include "tiledb/sm/array/array.h"
+#include "tiledb/sm/dimension_label/dimension_label.h"
+#include "tiledb/sm/dimension_label/dimension_label_query.h"
+#include "tiledb/sm/enums/label_order.h"
 #include "tiledb/sm/enums/query_status.h"
 #include "tiledb/sm/enums/query_type.h"
 #include "tiledb/sm/fragment/fragment_metadata.h"
@@ -85,7 +88,9 @@ Query::Query(
     , offsets_buffer_name_("")
     , disable_checks_consolidation_(false)
     , consolidation_with_timestamps_(false)
-    , fragment_uri_(fragment_uri) {
+    , fragment_uri_(fragment_uri)
+    , label_queries_(array_schema_->dim_num(), nullptr)
+    , labels_applied_(array_schema_->dim_num(), true) {
   assert(array->is_open());
   auto st = array->get_query_type(&type_);
   assert(st.ok());
@@ -130,6 +135,18 @@ Query::~Query() {
 /*               API              */
 /* ****************************** */
 
+Status Query::add_label_range(
+    unsigned dim_idx, const void* start, const void* end, const void* stride) {
+  if (dim_idx >= array_schema_->dim_num())
+    return logger_->status(
+        Status_QueryError("Cannot add range; Invalid dimension index"));
+  if (!label_queries_[dim_idx])
+    return logger_->status(
+        Status_QueryError("Cannot add range; Query is not set to be by label "
+                          "on this dimension index."));
+  return label_queries_[dim_idx]->add_label_range(start, end, stride);
+}
+
 Status Query::add_range(
     unsigned dim_idx, const void* start, const void* end, const void* stride) {
   if (type_ != QueryType::READ && type_ != QueryType::WRITE) {
@@ -142,56 +159,61 @@ Status Query::add_range(
         Status_QueryError("Cannot add range; Invalid dimension index"));
   }
 
-  if (start == nullptr || end == nullptr) {
+  if (label_queries_[dim_idx])  // TODO Change to have explicit check for ranges
+    return logger_->status(
+        Status_QueryError("Cannot add range; Ranges already set to label on "
+                          "this dimension index"));
+
+  if (start == nullptr || end == nullptr)
     return logger_->status(
         Status_QueryError("Cannot add range; Invalid range"));
-  }
+}
 
-  if (stride != nullptr) {
+if (stride != nullptr) {
+  return logger_->status(Status_QueryError(
+      "Cannot add range; Setting range stride is currently unsupported"));
+}
+
+if (array_schema_->domain().dimension_ptr(dim_idx)->var_size()) {
+  return logger_->status(
+      Status_QueryError("Cannot add range; Range must be fixed-sized"));
+}
+
+// Prepare a temp range
+std::vector<uint8_t> range;
+auto coord_size{array_schema_->dimension_ptr(dim_idx)->coord_size()};
+range.resize(2 * coord_size);
+std::memcpy(&range[0], start, coord_size);
+std::memcpy(&range[coord_size], end, coord_size);
+
+bool read_range_oob_error = true;
+if (type_ == QueryType::READ) {
+  // Get read_range_oob config setting
+  bool found = false;
+  std::string read_range_oob = config_.get("sm.read_range_oob", &found);
+  assert(found);
+
+  if (read_range_oob != "error" && read_range_oob != "warn")
     return logger_->status(Status_QueryError(
-        "Cannot add range; Setting range stride is currently unsupported"));
-  }
+        "Invalid value " + read_range_oob +
+        " for sm.read_range_obb. Acceptable values are 'error' or 'warn'."));
 
-  if (array_schema_->domain().dimension_ptr(dim_idx)->var_size()) {
+  read_range_oob_error = read_range_oob == "error";
+} else {
+  if (!array_schema_->dense())
     return logger_->status(
-        Status_QueryError("Cannot add range; Range must be fixed-sized"));
-  }
+        Status_QueryError("Adding a subarray range to a write query is not "
+                          "supported in sparse arrays"));
 
-  // Prepare a temp range
-  std::vector<uint8_t> range;
-  auto coord_size{array_schema_->dimension_ptr(dim_idx)->coord_size()};
-  range.resize(2 * coord_size);
-  std::memcpy(&range[0], start, coord_size);
-  std::memcpy(&range[coord_size], end, coord_size);
+  if (subarray_.is_set(dim_idx))
+    return logger_->status(
+        Status_QueryError("Cannot add range; Multi-range dense writes "
+                          "are not supported"));
+}
 
-  bool read_range_oob_error = true;
-  if (type_ == QueryType::READ) {
-    // Get read_range_oob config setting
-    bool found = false;
-    std::string read_range_oob = config_.get("sm.read_range_oob", &found);
-    assert(found);
-
-    if (read_range_oob != "error" && read_range_oob != "warn")
-      return logger_->status(Status_QueryError(
-          "Invalid value " + read_range_oob +
-          " for sm.read_range_obb. Acceptable values are 'error' or 'warn'."));
-
-    read_range_oob_error = read_range_oob == "error";
-  } else {
-    if (!array_schema_->dense())
-      return logger_->status(
-          Status_QueryError("Adding a subarray range to a write query is not "
-                            "supported in sparse arrays"));
-
-    if (subarray_.is_set(dim_idx))
-      return logger_->status(
-          Status_QueryError("Cannot add range; Multi-range dense writes "
-                            "are not supported"));
-  }
-
-  // Add range
-  Range r(&range[0], 2 * coord_size);
-  return subarray_.add_range(dim_idx, std::move(r), read_range_oob_error);
+// Add range
+Range r(&range[0], 2 * coord_size);
+return subarray_.add_range(dim_idx, std::move(r), read_range_oob_error);
 }
 
 Status Query::add_range_var(
@@ -208,6 +230,11 @@ Status Query::add_range_var(
   if (dim_idx >= array_schema_->dim_num())
     return logger_->status(
         Status_QueryError("Cannot add range; Invalid dimension index"));
+
+  if (label_queries_[dim_idx])  // TODO Change to explicit check if range is set
+    return logger_->status(
+        Status_QueryError("Cannot add range; Ranges already set to label on "
+                          "this dimension index"));
 
   if ((start == nullptr && start_size != 0) ||
       (end == nullptr && end_size != 0))
@@ -236,6 +263,35 @@ Status Query::add_range_var(
   Range r;
   r.set_range_var(start, start_size, end, end_size);
   return subarray_.add_range(dim_idx, std::move(r), read_range_oob == "error");
+}
+
+Status Query::apply_label(const unsigned dim_idx) {
+  const auto& label_query = label_queries_[dim_idx];
+  if (!label_query) {
+    labels_applied_[dim_idx] = true;
+    return Status::Ok();
+  }
+  // TODO Add method to subarray that clears the ranges. Call here.
+  auto&& [status, range] = label_query->get_index_range();
+  if (!status.ok())
+    return logger_->status(Status_QueryError(
+        "Cannot apply label on dimension " + std::to_string(dim_idx) +
+        ". Label query failed."));
+  RETURN_NOT_OK(subarray_.add_range(dim_idx, std::move(range)));
+  labels_applied_[dim_idx] = true;
+  return Status::Ok();
+}
+
+Status Query::apply_labels() {
+  bool success{true};
+  for (unsigned dim_idx{0}; dim_idx < array_schema().dim_num(); ++dim_idx) {
+    auto status = apply_label(dim_idx);
+    if (!status.ok())  // Want to return error, but resolve remaining labels.
+      success = false;
+  }
+  return success ?
+             Status::Ok() :
+             Status_QueryError("Unable to apply labels on all dimensions.");
 }
 
 Status Query::get_range_num(unsigned dim_idx, uint64_t* range_num) const {
@@ -1007,6 +1063,12 @@ Status Query::init() {
       return logger_->status(Status_QueryError(errmsg.str()));
     }
 
+    for (const auto& applied : labels_applied_) {
+      if (!applied)
+        return logger_->status(
+            Status_QueryError("Cannot init query; All label queries must be "
+                              "completed and applied first."));
+    }
     RETURN_NOT_OK(check_buffer_names());
     RETURN_NOT_OK(create_strategy());
     RETURN_NOT_OK(strategy_->init());
@@ -1047,7 +1109,16 @@ const QueryCondition* Query::condition() const {
 
 Status Query::cancel() {
   status_ = QueryStatus::FAILED;
-  return Status::Ok();
+  bool success{true};
+  for (auto label_query : label_queries_) {
+    if (label_query) {
+      auto status = label_query->cancel();
+      if (!status.ok())
+        success = false;
+    }
+  }
+  return (success) ? Status::Ok() :
+                     Status_QueryError("Failed to cancel all label queries");
 }
 
 Status Query::process() {
@@ -1561,6 +1632,19 @@ Status Query::set_data_buffer(
   return Status::Ok();
 }
 
+Status Query::set_label_data_buffer(
+    const std::string& name,
+    void* const buffer,
+    uint64_t* const buffer_size,
+    const bool check_null_buffers) {
+  auto label_query = label_map_.find(name);
+  if (label_query == label_map_.end())
+    return Status_QueryError("No label with name '" + name + "'.");
+  RETURN_NOT_OK(label_query->second->create_data_query());
+  return label_query->second->set_label_data_buffer(
+      buffer, buffer_size, check_null_buffers);
+}
+
 Status Query::set_offsets_buffer(
     const std::string& name,
     uint64_t* const buffer_offsets,
@@ -1669,6 +1753,33 @@ Status Query::set_validity_buffer(
   // Set attribute/dimension buffer
   buffers_[name].set_validity_buffer(std::move(validity_vector));
 
+  return Status::Ok();
+}
+
+Status Query::set_external_label(
+    const unsigned dim_idx,
+    const std::string& label_name,
+    shared_ptr<DimensionLabel> dimension_label) {
+  switch (dimension_label->label_order()) {
+    case LabelOrder::UNORDERED_LABELS:
+      return Status_QueryError(
+          "Support for unordered labels is not yet "
+          "implemented.");
+      break;
+    case LabelOrder::DECREASING_LABELS:
+      return Status_QueryError(
+          "Support for reverse ordered labels is not yet "
+          "implemented.");
+      break;
+    case LabelOrder::INCREASING_LABELS:
+      label_queries_[dim_idx] = make_shared<OrderedLabelsQuery>(
+          HERE(), dimension_label, storage_manager_);
+      break;
+    default:
+      return Status_QueryError("Invalid label order type.");
+  }
+  labels_applied_[dim_idx] = false;
+  label_map_[label_name] = label_queries_[dim_idx].get();
   return Status::Ok();
 }
 
@@ -2186,7 +2297,17 @@ Status Query::submit() {
     return rest_client->submit_query_to_rest(array_->array_uri(), this);
   }
   RETURN_NOT_OK(init());
-  return storage_manager_->query_submit(this);
+  RETURN_NOT_OK(storage_manager_->query_submit(this));
+  for (ArraySchema::dimension_size_type dim_idx = 0;
+       dim_idx < array_schema_->dim_num();
+       ++dim_idx) {
+    if (label_queries_[dim_idx]) {
+      label_queries_[dim_idx]->set_index_ranges(
+          subarray_.ranges_for_dim(dim_idx));
+      RETURN_NOT_OK(label_queries_[dim_idx]->submit_data_query());
+    }
+  }
+  return Status::Ok();
 }
 
 Status Query::submit_async(
@@ -2205,6 +2326,14 @@ Status Query::submit_async(
   callback_ = callback;
   callback_data_ = callback_data;
   return storage_manager_->query_submit_async(this);
+}
+
+Status Query::submit_labels() {
+  for (auto& label_query : label_queries_) {
+    if (label_query)
+      RETURN_NOT_OK(label_query->resolve_labels());
+  }
+  return Status::Ok();
 }
 
 QueryStatus Query::status() const {
