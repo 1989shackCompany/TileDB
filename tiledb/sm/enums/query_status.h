@@ -39,6 +39,8 @@
 #include "tiledb/common/status.h"
 #include "tiledb/sm/misc/constants.h"
 
+using namespace tiledb::common;
+
 namespace tiledb {
 namespace sm {
 

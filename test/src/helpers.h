@@ -34,7 +34,6 @@
 #define TILEDB_TEST_HELPERS_H
 
 #include <tiledb/common/logger_public.h>
-#include "tiledb.h"
 #include "tiledb/common/common.h"
 #include "tiledb/sm/array/array.h"
 #include "tiledb/sm/cpp_api/tiledb"
@@ -89,6 +88,7 @@ extern std::mutex catch2_macro_mutex;
     INFO(status.to_string());            \
     REQUIRE(status.ok());                \
   }
+
 namespace tiledb {
 
 namespace sm {

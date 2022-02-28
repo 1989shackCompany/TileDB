@@ -192,6 +192,7 @@ set(TILEDB_UNIT_TEST_SOURCES
   src/unit-uuid.cc
   src/unit-vfs.cc
   src/unit-win-filesystem.cc
+  src/test-LabelledQuery.cc
   )
 
 if (TILEDB_CPP_API)
