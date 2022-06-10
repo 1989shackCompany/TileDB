@@ -1164,10 +1164,9 @@ Status query_to_capnp(
   auto type = query.type();
   auto array = query.array();
 
-  if (layout == Layout::GLOBAL_ORDER && query.type() == QueryType::WRITE)
-    return LOG_STATUS(
-        Status_SerializationError("Cannot serialize; global order "
-                                  "serialization not supported for writes."));
+  // TODO: serialize global_writer specific fields
+  if (layout == Layout::GLOBAL_ORDER && type == QueryType::WRITE) {
+  }
 
   if (array == nullptr)
     return LOG_STATUS(
@@ -1369,6 +1368,10 @@ Status query_from_capnp(
   Layout layout = Layout::UNORDERED;
   RETURN_NOT_OK(layout_enum(query_reader.getLayout().cStr(), &layout));
   RETURN_NOT_OK(query->set_layout_unsafe(layout));
+
+  // TODO: deserialize global_writer specific fields
+  if (layout == Layout::GLOBAL_ORDER && type == QueryType::WRITE) {
+  }
 
   // Deserialize array instance.
   RETURN_NOT_OK(array_from_capnp(query_reader.getArray(), array));
