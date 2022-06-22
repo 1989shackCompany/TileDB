@@ -21,6 +21,11 @@ OrderedLabelsQuery::OrderedLabelsQuery(
     , range_query_{nullptr}
     , labelled_array_query_{nullptr}
     , indexed_array_query_{nullptr} {
+  auto&& [status, query_type] = dimension_label_->query_type();
+  throw_if_not_ok(status);
+  if (!query_type.has_value())
+    throw std::logic_error("Failed to ready dimension label query type.");
+  query_type_ = query_type.value();
 }
 
 Status OrderedLabelsQuery::add_label_range(

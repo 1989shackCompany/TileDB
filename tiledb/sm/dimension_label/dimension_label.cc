@@ -163,4 +163,17 @@ Status DimensionLabel::load_schema() {
   return Status::Ok();
 }
 
+tuple<Status, optional<QueryType>> DimensionLabel::query_type() const {
+  QueryType indexed_query_type;
+  RETURN_NOT_OK_TUPLE(
+      indexed_array_->get_query_type(&indexed_query_type), nullopt);
+  QueryType labelled_query_type;
+  RETURN_NOT_OK_TUPLE(
+      labelled_array_->get_query_type(&labelled_query_type), nullopt);
+  if (indexed_query_type != labelled_query_type)
+    throw std::logic_error(
+        "Dimension label opened with inconsistent query types.");
+  return {Status::Ok(), indexed_query_type};
+}
+
 }  // namespace tiledb::sm

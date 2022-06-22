@@ -170,6 +170,14 @@ class DimensionLabel {
       const void* encryption_key,
       uint32_t key_length);
 
+  /**
+   * Returns the query type of the dimension label with Status error if arrays
+   * are not open.
+   *
+   * @returns Status, QueryType
+   */
+  tuple<Status, optional<QueryType>> query_type() const;
+
  private:
   /**********************/
   /* Private attributes */

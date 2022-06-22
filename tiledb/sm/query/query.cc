@@ -167,53 +167,52 @@ Status Query::add_range(
   if (start == nullptr || end == nullptr)
     return logger_->status(
         Status_QueryError("Cannot add range; Invalid range"));
-}
 
-if (stride != nullptr) {
-  return logger_->status(Status_QueryError(
-      "Cannot add range; Setting range stride is currently unsupported"));
-}
-
-if (array_schema_->domain().dimension_ptr(dim_idx)->var_size()) {
-  return logger_->status(
-      Status_QueryError("Cannot add range; Range must be fixed-sized"));
-}
-
-// Prepare a temp range
-std::vector<uint8_t> range;
-auto coord_size{array_schema_->dimension_ptr(dim_idx)->coord_size()};
-range.resize(2 * coord_size);
-std::memcpy(&range[0], start, coord_size);
-std::memcpy(&range[coord_size], end, coord_size);
-
-bool read_range_oob_error = true;
-if (type_ == QueryType::READ) {
-  // Get read_range_oob config setting
-  bool found = false;
-  std::string read_range_oob = config_.get("sm.read_range_oob", &found);
-  assert(found);
-
-  if (read_range_oob != "error" && read_range_oob != "warn")
+  if (stride != nullptr) {
     return logger_->status(Status_QueryError(
-        "Invalid value " + read_range_oob +
-        " for sm.read_range_obb. Acceptable values are 'error' or 'warn'."));
+        "Cannot add range; Setting range stride is currently unsupported"));
+  }
 
-  read_range_oob_error = read_range_oob == "error";
-} else {
-  if (!array_schema_->dense())
+  if (array_schema_->domain().dimension_ptr(dim_idx)->var_size()) {
     return logger_->status(
-        Status_QueryError("Adding a subarray range to a write query is not "
-                          "supported in sparse arrays"));
+        Status_QueryError("Cannot add range; Range must be fixed-sized"));
+  }
 
-  if (subarray_.is_set(dim_idx))
-    return logger_->status(
-        Status_QueryError("Cannot add range; Multi-range dense writes "
-                          "are not supported"));
-}
+  // Prepare a temp range
+  std::vector<uint8_t> range;
+  auto coord_size{array_schema_->dimension_ptr(dim_idx)->coord_size()};
+  range.resize(2 * coord_size);
+  std::memcpy(&range[0], start, coord_size);
+  std::memcpy(&range[coord_size], end, coord_size);
 
-// Add range
-Range r(&range[0], 2 * coord_size);
-return subarray_.add_range(dim_idx, std::move(r), read_range_oob_error);
+  bool read_range_oob_error = true;
+  if (type_ == QueryType::READ) {
+    // Get read_range_oob config setting
+    bool found = false;
+    std::string read_range_oob = config_.get("sm.read_range_oob", &found);
+    assert(found);
+
+    if (read_range_oob != "error" && read_range_oob != "warn")
+      return logger_->status(Status_QueryError(
+          "Invalid value " + read_range_oob +
+          " for sm.read_range_obb. Acceptable values are 'error' or 'warn'."));
+
+    read_range_oob_error = read_range_oob == "error";
+  } else {
+    if (!array_schema_->dense())
+      return logger_->status(
+          Status_QueryError("Adding a subarray range to a write query is not "
+                            "supported in sparse arrays"));
+
+    if (subarray_.is_set(dim_idx))
+      return logger_->status(
+          Status_QueryError("Cannot add range; Multi-range dense writes "
+                            "are not supported"));
+  }
+
+  // Add range
+  Range r(&range[0], 2 * coord_size);
+  return subarray_.add_range(dim_idx, std::move(r), read_range_oob_error);
 }
 
 Status Query::add_range_var(

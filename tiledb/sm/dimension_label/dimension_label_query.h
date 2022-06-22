@@ -179,6 +179,8 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
   tdb_unique_ptr<Query> labelled_array_query_;
 
   tdb_unique_ptr<Query> indexed_array_query_;
+
+  QueryType query_type_;
 };
 
 }  // namespace tiledb::sm
