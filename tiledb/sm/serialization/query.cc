@@ -61,6 +61,7 @@
 #include "tiledb/sm/misc/hash.h"
 #include "tiledb/sm/misc/parse_argument.h"
 #include "tiledb/sm/query/dense_reader.h"
+#include "tiledb/sm/query/global_order_writer.h"
 #include "tiledb/sm/query/reader.h"
 #include "tiledb/sm/query/sparse_global_order_reader.h"
 #include "tiledb/sm/query/sparse_unordered_with_dups_reader.h"
@@ -2429,6 +2430,18 @@ Status query_est_result_size_deserialize(
   return Status::Ok();
 }
 
+Status global_write_state_to_capnp(
+    const GlobalOrderWriter::GlobalWriteState& write_state,
+    capnp::GlobalWriteState::Builder* state_builder) {
+  return Status::Ok();
+}
+
+Status global_write_state_from_capnp(
+    const capnp::GlobalWriteState::Builder& state_reader,
+    GlobalOrderWriter::GlobalWriteState* write_state) {
+  return Status::Ok();
+}
+
 #else
 
 Status query_serialize(Query*, SerializationType, bool, BufferList*) {
@@ -2452,6 +2465,20 @@ Status query_est_result_size_deserialize(
     Query*, SerializationType, bool, const Buffer&) {
   return LOG_STATUS(Status_SerializationError(
       "Cannot deserialize; serialization not enabled."));
+}
+
+Status global_write_state_to_capnp(
+    const GlobalOrderWriter::GlobalWriteState& write_state,
+    capnp::GlobalWriteState::Builder* state_builder) {
+  return LOG_STATUS(Status_SerializationError(
+      "Cannot serialize; serialization not enabled."));
+}
+
+Status global_write_state_from_capnp(
+    const capnp::GlobalWriteState::Builder& state_reader,
+    GlobalOrderWriter::GlobalWriteState* write_state) {
+  return LOG_STATUS(Status_SerializationError(
+      "Cannot serialize; serialization not enabled."));
 }
 
 #endif  // TILEDB_SERIALIZATION
