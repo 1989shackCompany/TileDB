@@ -4,7 +4,7 @@
 #
 # The MIT License
 #
-# Copyright (c) 2017-2021 TileDB, Inc.
+# Copyright (c) 2017-2022 TileDB, Inc.
 # Copyright (c) 2016 MIT and Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -95,6 +95,16 @@ set(TILEDB_CORE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/..")
 # include "tiledb.h".
 list(APPEND TILEDB_CORE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tiledb/sm/c_api")
 
+# Gather the test source files
+set(TILEDB_TEST_SUPPORT_SOURCES
+  src/ast_helpers.h
+  src/ast_helpers.cc
+  src/helpers.h
+  src/helpers.cc
+  src/helpers-dimension.h
+  src/vfs_helpers.cc
+  )
+
 set(TILEDB_UNIT_TEST_SOURCES
   support/src/helpers.h
   support/src/helpers-dimension.h
@@ -159,7 +169,7 @@ set(TILEDB_UNIT_TEST_SOURCES
   src/unit-lru_cache.cc
   src/unit-tile-metadata.cc
   src/unit-tile-metadata-generator.cc
-  src/unit-QueryCondition.cc
+  src/unit-bytevecvalue.cc
   src/unit-ReadCellSlabIter.cc
   src/unit-Reader.cc
   src/unit-resource-pool.cc
@@ -216,6 +226,7 @@ if (TILEDB_SERIALIZATION)
   list(APPEND TILEDB_UNIT_TEST_SOURCES
     src/unit-capi-serialized_queries.cc
     src/unit-capi-serialized_queries_using_subarray.cc
+    src/unit-QueryCondition-serialization.cc
     src/unit-curl.cc
   )
 endif()

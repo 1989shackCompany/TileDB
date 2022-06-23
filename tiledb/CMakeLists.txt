@@ -208,6 +208,7 @@ set(TILEDB_CORE_SOURCES
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/misc/uuid.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/misc/win_constants.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/misc/work_arounds.cc
+  ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/query/ast/query_ast.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/query/dense_reader.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/query/dense_tiler.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/query/global_order_writer.cc
@@ -243,6 +244,7 @@ set(TILEDB_CORE_SOURCES
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/subarray/subarray.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/subarray/subarray_partitioner.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/subarray/subarray_tile_overlap.cc
+  ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/subarray/tile_cell_slab_iter.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/tile/tile.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/tile/generic_tile_io.cc
   ${TILEDB_CORE_INCLUDE_DIR}/tiledb/sm/tile/tile_metadata_generator.cc
@@ -754,11 +756,11 @@ if(TILEDB_SERIALIZATION)
     set(TILEDB_SERIALIZATION_GENERATED_SUBDIR posix)
   endif()
 
-  target_sources(TILEDB_CORE_OBJECTS PUBLIC
+  target_sources(TILEDB_CORE_OBJECTS PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/sm/serialization/${TILEDB_SERIALIZATION_GENERATED_SUBDIR}/tiledb-rest.capnp.c++
   )
   if (WIN32 AND TILEDB_STATIC)
-    target_sources(TILEDB_CORE_OBJECTS_STATIC PUBLIC
+    target_sources(TILEDB_CORE_OBJECTS_STATIC PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/sm/serialization/${TILEDB_SERIALIZATION_GENERATED_SUBDIR}/tiledb-rest.capnp.c++
     )
   endif()
@@ -1044,6 +1046,18 @@ install(
   FILES "${PROJECT_CONFIG}"
   DESTINATION "${CONFIG_INSTALL_DIR}"
 )
+
+if (TILEDB_VERSION)
+  set(TILEDB_PROJECT_CONFIG_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/TileDBConfigVersion.cmake")
+  write_basic_package_version_file("${TILEDB_PROJECT_CONFIG_VERSION_FILE}"
+    VERSION "${TILEDB_VERSION}"
+    COMPATIBILITY SameMinorVersion
+  )
+  install(
+    FILES "${TILEDB_PROJECT_CONFIG_VERSION_FILE}"
+    DESTINATION "${CONFIG_INSTALL_DIR}"
+  )
+endif() 
 
 # Install targets file to <prefix>/lib/cmake/TileDB/TileDBTargets.cmake
 install(
