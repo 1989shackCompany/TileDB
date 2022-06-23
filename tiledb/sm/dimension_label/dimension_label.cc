@@ -35,6 +35,7 @@
 #include "tiledb/sm/array_schema/dimension_label_schema.h"
 #include "tiledb/sm/enums/label_order.h"
 #include "tiledb/sm/filesystem/uri.h"
+#include "tiledb/sm/misc/tdb_time.h"
 #include "tiledb/type/range/range.h"
 
 using namespace tiledb::common;
@@ -97,12 +98,16 @@ Status DimensionLabel::open(
     EncryptionType encryption_type,
     const void* encryption_key,
     uint32_t key_length) {
-  RETURN_NOT_OK(indexed_array_->open(
-      query_type, encryption_type, encryption_key, key_length));
-  RETURN_NOT_OK(labelled_array_->open(
-      query_type, encryption_type, encryption_key, key_length));
-  RETURN_NOT_OK(load_schema());
-  return Status::Ok();
+  // Explicitly set timestamp so it's the same for both arrays.
+  uint64_t timestamp_start{0};
+  uint64_t timestamp_end{utils::time::timestamp_now_ms()};
+  return open(
+      query_type,
+      timestamp_start,
+      timestamp_end,
+      encryption_type,
+      encryption_key,
+      key_length);
 }
 
 Status DimensionLabel::open(
