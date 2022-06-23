@@ -38,6 +38,9 @@ Status OrderedLabelsQuery::add_label_range(
     return Status_DimensionLabelQueryError(
         "Cannot add range; Setting more than one label range is currently "
         "unsupported.");
+  if (query_type_ == QueryType::WRITE)
+    return Status_DimensionLabelQueryError(
+        "Cannot add range; DimensionLabel writes cannot be set by label.");
   range_query_ = tdb_unique_ptr<RangeQuery>(tdb_new(
       RangeQuery, dimension_label_.get(), storage_manager_, start, end));
   return Status::Ok();
@@ -61,12 +64,30 @@ Status OrderedLabelsQuery::cancel() {
 }
 
 Status OrderedLabelsQuery::create_data_query() {
+  /**
+   * For reading data, only the indexed array is needed. For writing to the
+   * dimension label, we need to open both the indexed and labelled arrays.
+   */
+  if (query_type_ == QueryType::WRITE) {
+    if (!dimension_label_->labelled_array()->is_empty() ||
+        !dimension_label_->indexed_array()->is_empty())
+      return Status_DimensionLabelQueryError(
+          "Cannot write to dimension label. Currently dimension labels can "
+          "only be written to once.");
+    if (labelled_array_query_)
+      return Status_DimensionLabelQueryError(
+          "Cannot create data query. Query already exists.");
+    labelled_array_query_ = tdb_unique_ptr<Query>(
+        tdb_new(Query, storage_manager_, dimension_label_->labelled_array()));
+    RETURN_NOT_OK(labelled_array_query_->set_layout(Layout::ROW_MAJOR));
+  }
   if (indexed_array_query_)
     return Status_DimensionLabelQueryError(
         "Cannot create data query. Query already exists.");
   indexed_array_query_ = tdb_unique_ptr<Query>(
       tdb_new(Query, storage_manager_, dimension_label_->indexed_array()));
-  return indexed_array_query_->set_layout(Layout::ROW_MAJOR);
+  RETURN_NOT_OK(indexed_array_query_->set_layout(Layout::ROW_MAJOR));
+  return Status::Ok();
 }
 
 Status OrderedLabelsQuery::finalize() {
@@ -97,10 +118,31 @@ Status OrderedLabelsQuery::resolve_labels() {
   return Status::Ok();
 }
 
+Status OrderedLabelsQuery::set_index_data_buffer(
+    void* const buffer,
+    uint64_t* const buffer_size,
+    const bool check_null_buffers) {
+  if (query_type_ != QueryType::WRITE)
+    return Status_DimensionLabelQueryError(
+        "Cannot set index data buffer; Index buffer only accessed on writes.");
+  if (!labelled_array_query_)
+    return Status_DimensionLabelQueryError(
+        "Cannot set index data buffer; Data query not inialized.");
+  return labelled_array_query_->set_data_buffer(
+      dimension_label_->label_attribute()->name(),
+      buffer,
+      buffer_size,
+      check_null_buffers);
+}
+
 Status OrderedLabelsQuery::set_index_ranges(const std::vector<Range>& ranges) {
   if (!indexed_array_query_)
     return Status_DimensionLabelQueryError(
         "Cannot set subarray. Data query not initialized.");
+  if (query_type_ == QueryType::WRITE)
+    return Status_DimensionLabelQueryError(
+        "Cannot set subarray. Currently dimension labels only support writing "
+        "the full array.");
   Subarray subarray{dimension_label_->indexed_array().get(),
                     Layout::ROW_MAJOR,
                     stats_,
@@ -113,6 +155,13 @@ Status OrderedLabelsQuery::set_label_data_buffer(
     void* const buffer,
     uint64_t* const buffer_size,
     const bool check_null_buffers) {
+  if (!indexed_array_query_)
+    return Status_DimensionLabelQueryError(
+        "Cannot set label data buffer; Data query not initialized.");
+  /**
+  if (query_type_ == TILEDB::WRITE)
+    check the data is sorted
+  **/
   return indexed_array_query_->set_data_buffer(
       dimension_label_->label_attribute()->name(),
       buffer,

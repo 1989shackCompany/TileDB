@@ -32,6 +32,7 @@
 
 #include "test/src/helpers.h"
 #include "test/src/vfs_helpers.h"
+#include "tiledb.h"
 #include "tiledb/sm/c_api/tiledb_struct_def.h"
 #include "tiledb/sm/dimension_label/dimension_label.h"
 #include "tiledb/sm/dimension_label/dimension_label_query.h"
@@ -134,6 +135,9 @@ void create_main_array_1d(const std::string& name, tiledb_ctx_t* ctx) {
       TILEDB_ROW_MAJOR,
       TILEDB_ROW_MAJOR,
       10000);
+}
+
+void write_main_array_1d(const std::string& name, tiledb_ctx_t* ctx) {
   tiledb::test::QueryBuffers buffers;
   std::vector<float> a1_data(16);
   for (uint64_t ii{0}; ii < 16; ++ii) {
@@ -205,6 +209,154 @@ void create_uniform_label(
   write_array(ctx, name_labelled, TILEDB_GLOBAL_ORDER, buffers);
 }
 
+void write_uniform_label_manually(
+    const std::string& name_indexed,
+    const std::string& name_labelled,
+    tiledb_ctx_t* ctx) {
+  // Define data
+  std::vector<int64_t> label_data(16);
+  std::vector<uint64_t> index_data(16);
+  for (uint32_t ii{0}; ii < 16; ++ii) {
+    label_data[ii] = static_cast<int64_t>(ii) - 16;
+    index_data[ii] = (ii + 1);
+  }
+  // Set data in indexed array
+  tiledb::test::QueryBuffers label_buffer;
+  label_buffer["label"] = tiledb::test::QueryBuffer(
+      {&label_data[0], label_data.size() * sizeof(int64_t), nullptr, 0});
+  write_array(ctx, name_indexed, TILEDB_GLOBAL_ORDER, label_buffer);
+  // Set data in labelled array
+  tiledb::test::QueryBuffers buffers;
+  buffers["label"] = tiledb::test::QueryBuffer(
+      {&label_data[0], label_data.size() * sizeof(int64_t), nullptr, 0});
+  buffers["index"] = tiledb::test::QueryBuffer(
+      {&index_data[0], index_data.size() * sizeof(uint64_t), nullptr, 0});
+  write_array(ctx, name_labelled, TILEDB_GLOBAL_ORDER, buffers);
+}
+
+TEST_CASE_METHOD(
+    TemporaryDirectoryFixture,
+    "OrderedLabelsQuery: Write to dimension label",
+    "[Query][DimensionLabel][Ordered]") {
+  const std::string label_array_name = fullpath("labelled");
+  const std::string index_array_name = fullpath("indexed");
+  create_uniform_label(index_array_name, label_array_name, ctx);
+  // Open the dimension label.
+  URI indexed_uri{index_array_name.c_str()};
+  URI labelled_uri{label_array_name.c_str()};
+  auto dimension_label = make_shared<DimensionLabel>(
+      HERE(),
+      indexed_uri,
+      labelled_uri,
+      ctx->ctx_->storage_manager(),
+      LabelOrder::INCREASING_LABELS);
+  auto status = dimension_label->open(
+      QueryType::WRITE, EncryptionType::NO_ENCRYPTION, nullptr, 0);
+  REQUIRE_TILEDB_STATUS_OK(status);
+  // Create dimension label data query.
+  OrderedLabelsQuery query{dimension_label, ctx->ctx_->storage_manager()};
+  status = query.create_data_query();
+  REQUIRE_TILEDB_STATUS_OK(status);
+
+  // Set data for query.
+  std::vector<uint64_t> index_data(16);
+  std::vector<int64_t> label_data(16);
+  for (uint32_t ii{0}; ii < 16; ++ii) {
+    label_data[ii] = static_cast<int64_t>(ii) - 16;
+    index_data[ii] = (ii + 1);
+  }
+  uint64_t index_data_size{16 * sizeof(uint64_t)};
+  uint64_t label_data_size{16 * sizeof(uint64_t)};
+  REQUIRE_TILEDB_STATUS_OK(
+      query.set_index_data_buffer(index_data.data(), &index_data_size, false));
+  REQUIRE_TILEDB_STATUS_OK(
+      query.set_label_data_buffer(label_data.data(), &label_data_size, false));
+
+  // Close and clean-up the array
+  REQUIRE_TILEDB_STATUS_OK(dimension_label->close());
+
+  // Read back data from indexed array.
+  std::vector<int64_t> indexed_array_label_data(16, 0);
+  {
+    // 1. Allocate and open the indexed array.
+    tiledb_array_t* indexed_array;
+    REQUIRE_TILEDB_OK(
+        tiledb_array_alloc(ctx, index_array_name.c_str(), &indexed_array));
+    REQUIRE_TILEDB_OK(tiledb_array_open(ctx, indexed_array, TILEDB_READ));
+    // 2. Allocate the query.
+    tiledb_query_t* indexed_query;
+    REQUIRE_TILEDB_OK(
+        tiledb_query_alloc(ctx, indexed_array, TILEDB_READ, &indexed_query));
+    // 3. Allocate and set the subarray.
+    tiledb_subarray_t* indexed_subarray;
+    REQUIRE_TILEDB_OK(
+        tiledb_subarray_alloc(ctx, indexed_array, &indexed_subarray));
+    uint64_t range_data[2]{1, 16};
+    REQUIRE_TILEDB_OK(tiledb_subarray_add_range(
+        ctx, indexed_subarray, 0, &range_data[0], &range_data[1], nullptr));
+    REQUIRE_TILEDB_OK(
+        tiledb_query_set_subarray_t(ctx, indexed_query, indexed_subarray));
+    // 4. Set the data buffer for the label array.
+    uint64_t label_data_size{16 * sizeof(uint64_t)};
+    REQUIRE_TILEDB_OK(tiledb_query_set_buffer(
+        ctx,
+        indexed_query,
+        "label",
+        indexed_array_label_data.data(),
+        &label_data_size));
+    // 5. Submit the query.
+    REQUIRE_TILEDB_OK(tiledb_query_submit(ctx, indexed_query));
+    // 6. Release the resources
+    tiledb_subarray_free(&indexed_subarray);
+    tiledb_query_free(&indexed_query);
+    REQUIRE_TILEDB_OK(tiledb_array_close(ctx, indexed_array));
+    tiledb_array_free(&indexed_array);
+  }
+
+  // Read back data from labelled array.
+  std::vector<int64_t> labelled_array_label_data(16, 0);
+  std::vector<uint64_t> labelled_array_index_data(16, 0);
+  {
+    uint64_t index_data_size{16 * sizeof(uint64_t)};
+    uint64_t label_data_size{16 * sizeof(uint64_t)};
+    tiledb_array_t* labelled_array;
+    REQUIRE_TILEDB_OK(
+        tiledb_array_alloc(ctx, label_array_name.c_str(), &labelled_array));
+    REQUIRE_TILEDB_OK(tiledb_array_open(ctx, labelled_array, TILEDB_READ));
+    tiledb_query_t* labelled_query;
+    REQUIRE_TILEDB_OK(
+        tiledb_query_alloc(ctx, labelled_array, TILEDB_READ, &labelled_query));
+    REQUIRE_TILEDB_OK(tiledb_query_set_buffer(
+        ctx,
+        labelled_query,
+        "label",
+        labelled_array_label_data.data(),
+        &label_data_size));
+    REQUIRE_TILEDB_OK(tiledb_query_set_buffer(
+        ctx,
+        labelled_query,
+        "index",
+        labelled_array_index_data.data(),
+        &index_data_size));
+    REQUIRE_TILEDB_OK(tiledb_query_submit(ctx, labelled_query));
+    tiledb_query_free(&labelled_query);
+    REQUIRE_TILEDB_OK(tiledb_array_close(ctx, labelled_array));
+    tiledb_array_free(&labelled_array);
+  }
+  /*
+  / Check data is as expected.
+  for (uint32_t ii{0}; ii < 16; ++ii) {
+    CHECK(label_data[ii] == indexed_array_label_data[ii]);
+  }
+  */
+  for (uint32_t ii{0}; ii < 16; ++ii) {
+    CHECK(label_data[ii] == labelled_array_label_data[ii]);
+  }
+  for (uint32_t ii{0}; ii < 16; ++ii) {
+    CHECK(index_data[ii] == labelled_array_index_data[ii]);
+  }
+}
+
 TEST_CASE_METHOD(
     TemporaryDirectoryFixture,
     "LabelledQuery: External label, 1D",
@@ -214,7 +366,9 @@ TEST_CASE_METHOD(
   const std::string label_array_name = fullpath("labelled");
   const std::string index_array_name = fullpath("indexed");
   create_main_array_1d(main_array_name, ctx);
+  write_main_array_1d(main_array_name, ctx);
   create_uniform_label(index_array_name, label_array_name, ctx);
+  write_uniform_label_manually(index_array_name, label_array_name, ctx);
 
   SECTION("Read range from a dimension label") {
     // Open the dimension label.
@@ -229,7 +383,7 @@ TEST_CASE_METHOD(
     auto status = dimension_label->open(
         QueryType::READ, EncryptionType::NO_ENCRYPTION, nullptr, 0);
     if (!status.ok())
-      INFO("Open dimension_label: " + status.to_string());
+      INFO("Open dimension label: " + status.to_string());
     REQUIRE(status.ok());
 
     // Create dimension label query.
@@ -275,7 +429,7 @@ TEST_CASE_METHOD(
     auto status = dimension_label->open(
         QueryType::READ, EncryptionType::NO_ENCRYPTION, nullptr, 0);
     if (!status.ok())
-      INFO("Open dimension alebl: " + status.to_string());
+      INFO("Open dimension label: " + status.to_string());
     REQUIRE(status.ok());
 
     // Create dimension label data query.

@@ -34,7 +34,6 @@
 #define TILEDB_TEST_HELPERS_H
 
 #include <tiledb/common/logger_public.h>
-#include "tiledb.h"
 #include "tiledb/common/common.h"
 #include "tiledb/sm/array/array.h"
 #include "tiledb/sm/cpp_api/tiledb"
@@ -75,6 +74,20 @@ extern std::mutex catch2_macro_mutex;
 // TILEDB_OK.
 #define REQUIRE_TILEDB_OK(a) \
   { REQUIRE(a == TILEDB_OK); }
+
+// A variant of the CHECK macro for checking a Status object is okay.
+#define CHECK_TILEDB_STATUS_OK(status) \
+  {                                    \
+    INFO(status.to_string());          \
+    CHECK(status.ok());                \
+  }
+
+// A variant of the REQUIRE macro for checking a Status objects is okay.
+#define REQUIRE_TILEDB_STATUS_OK(status) \
+  {                                      \
+    INFO(status.to_string());            \
+    REQUIRE(status.ok());                \
+  }
 
 namespace tiledb {
 

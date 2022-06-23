@@ -89,6 +89,12 @@ class DimensionLabelQuery {
   virtual Status resolve_labels() = 0;
 
   /** TODO */
+  virtual Status set_index_data_buffer(
+      void* const buffer,
+      uint64_t* const buffer_size,
+      const bool check_null_buffers) = 0;
+
+  /** TODO */
   virtual Status set_index_ranges(const std::vector<Range>& ranges) = 0;
 
   /**
@@ -146,6 +152,11 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
   tuple<Status, Range> get_index_range() const override;
 
   Status resolve_labels() override;
+
+  Status set_index_data_buffer(
+      void* const buffer,
+      uint64_t* buffer_size,
+      const bool check_null_buffers) override;
 
   Status set_index_ranges(const std::vector<Range>& ranges) override;
 
