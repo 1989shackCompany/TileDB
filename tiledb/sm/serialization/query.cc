@@ -61,7 +61,6 @@
 #include "tiledb/sm/misc/hash.h"
 #include "tiledb/sm/misc/parse_argument.h"
 #include "tiledb/sm/query/dense_reader.h"
-#include "tiledb/sm/query/global_order_writer.h"
 #include "tiledb/sm/query/reader.h"
 #include "tiledb/sm/query/sparse_global_order_reader.h"
 #include "tiledb/sm/query/sparse_unordered_with_dups_reader.h"
@@ -1135,11 +1134,20 @@ Status writer_to_capnp(
     RETURN_NOT_OK(stats_to_capnp(*stats, &stats_builder));
   }
 
+  if (query.layout() == Layout::GLOBAL_ORDER) {
+    auto global_state_builder = writer_builder->initGlobalWriteState();
+    RETURN_NOT_OK(global_write_state_to_capnp(
+        *dynamic_cast<GlobalOrderWriter&>(writer).get_global_state(),
+        &global_state_builder));
+  }
+
   return Status::Ok();
 }
 
 Status writer_from_capnp(
-    const capnp::Writer::Reader& writer_reader, WriterBase* writer) {
+    const Query& query,
+    const capnp::Writer::Reader& writer_reader,
+    WriterBase* writer) {
   writer->set_check_coord_dups(writer_reader.getCheckCoordDups());
   writer->set_check_coord_oob(writer_reader.getCheckCoordOOB());
   writer->set_dedup_coords(writer_reader.getDedupCoords());
@@ -1153,6 +1161,14 @@ Status writer_from_capnp(
     }
   }
 
+  if (query.layout() == Layout::GLOBAL_ORDER &&
+      writer_reader.hasGlobalWriteState()) {
+    RETURN_NOT_OK(global_write_state_from_capnp(
+        query,
+        writer_reader.getGlobalWriteState(),
+        dynamic_cast<GlobalOrderWriter*>(writer)->get_global_state()));
+  }
+
   return Status::Ok();
 }
 
@@ -1164,10 +1180,6 @@ Status query_to_capnp(
   auto layout = query.layout();
   auto type = query.type();
   auto array = query.array();
-
-  // TODO: serialize global_writer specific fields
-  if (layout == Layout::GLOBAL_ORDER && type == QueryType::WRITE) {
-  }
 
   if (array == nullptr)
     return LOG_STATUS(
@@ -1369,10 +1381,6 @@ Status query_from_capnp(
   Layout layout = Layout::UNORDERED;
   RETURN_NOT_OK(layout_enum(query_reader.getLayout().cStr(), &layout));
   RETURN_NOT_OK(query->set_layout_unsafe(layout));
-
-  // TODO: deserialize global_writer specific fields
-  if (layout == Layout::GLOBAL_ORDER && type == QueryType::WRITE) {
-  }
 
   // Deserialize array instance.
   RETURN_NOT_OK(array_from_capnp(query_reader.getArray(), array));
@@ -1983,7 +1991,7 @@ Status query_from_capnp(
           writer->set_offsets_bitsize(query_reader.getVarOffsetsBitsize()));
     }
 
-    RETURN_NOT_OK(writer_from_capnp(writer_reader, writer));
+    RETURN_NOT_OK(writer_from_capnp(*query, writer_reader, writer));
 
     // For sparse writes we want to explicitly set subarray to nullptr.
     const bool sparse_write =
@@ -2433,12 +2441,197 @@ Status query_est_result_size_deserialize(
 Status global_write_state_to_capnp(
     const GlobalOrderWriter::GlobalWriteState& write_state,
     capnp::GlobalWriteState::Builder* state_builder) {
+  (void)(write_state);
+  (void)(state_builder);
   return Status::Ok();
 }
 
 Status global_write_state_from_capnp(
-    const capnp::GlobalWriteState::Builder& state_reader,
+    const Query& query,
+    const capnp::GlobalWriteState::Reader& state_reader,
     GlobalOrderWriter::GlobalWriteState* write_state) {
+  if (state_reader.hasCellsWritten()) {
+    auto& cells_written = write_state->cells_written_;
+    auto cell_written_reader = state_reader.getCellsWritten();
+    for (auto entry : cell_written_reader.getEntries()) {
+      cells_written[std::string(entry.getKey().cStr())] = entry.getValue();
+    }
+  }
+
+  if (state_reader.hasFragMeta()) {
+    auto frag_meta = write_state->frag_meta_;
+    auto frag_meta_reader = state_reader.getFragMeta();
+    if (frag_meta_reader.hasFileSizes()) {
+      frag_meta->file_sizes().resize(frag_meta_reader.getFileSizes().size());
+      std::copy(
+          frag_meta_reader.getFileSizes().begin(),
+          frag_meta_reader.getFileSizes().end(),
+          frag_meta->file_sizes().begin());
+    }
+    if (frag_meta_reader.hasFileVarSizes()) {
+      frag_meta->file_var_sizes().resize(
+          frag_meta_reader.getFileVarSizes().size());
+      std::copy(
+          frag_meta_reader.getFileVarSizes().begin(),
+          frag_meta_reader.getFileVarSizes().end(),
+          frag_meta->file_var_sizes().begin());
+    }
+    if (frag_meta_reader.hasFileValiditySizes()) {
+      frag_meta->file_validity_sizes().resize(
+          frag_meta_reader.getFileValiditySizes().size());
+      std::copy(
+          frag_meta_reader.getFileValiditySizes().begin(),
+          frag_meta_reader.getFileValiditySizes().end(),
+          frag_meta->file_validity_sizes().begin());
+    }
+    if (frag_meta_reader.hasFragmentUri()) {
+      frag_meta->fragment_uri() = URI(frag_meta_reader.getFragmentUri().cStr());
+    }
+    frag_meta->has_timestamps() = frag_meta_reader.getHasTimestamps();
+    frag_meta->sparse_tile_num() = frag_meta_reader.getSparseTileNum();
+    frag_meta->tile_index_base() = frag_meta_reader.getTileIndexBase();
+    frag_meta->tile_index_base() = frag_meta_reader.getTileIndexBase();
+    if (frag_meta_reader.hasTileOffsets()) {
+      for (const auto& t : frag_meta_reader.getTileOffsets()) {
+        auto last = frag_meta->tile_offsets().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileVarOffsets()) {
+      for (const auto& t : frag_meta_reader.getTileVarOffsets()) {
+        auto last = frag_meta->tile_var_offsets().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileVarSizes()) {
+      for (const auto& t : frag_meta_reader.getTileVarSizes()) {
+        auto last = frag_meta->tile_var_sizes().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileValidityOffsets()) {
+      for (const auto& t : frag_meta_reader.getTileValidityOffsets()) {
+        auto last = frag_meta->tile_validity_offsets().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileMinBuffer()) {
+      for (const auto& t : frag_meta_reader.getTileMinBuffer()) {
+        auto last = frag_meta->tile_min_buffer().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileMinVarBuffer()) {
+      for (const auto& t : frag_meta_reader.getTileMinVarBuffer()) {
+        auto last = frag_meta->tile_min_var_buffer().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileMaxBuffer()) {
+      for (const auto& t : frag_meta_reader.getTileMaxBuffer()) {
+        auto last = frag_meta->tile_max_buffer().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileMaxVarBuffer()) {
+      for (const auto& t : frag_meta_reader.getTileMaxVarBuffer()) {
+        auto last = frag_meta->tile_max_var_buffer().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileSums()) {
+      for (const auto& t : frag_meta_reader.getTileSums()) {
+        auto last = frag_meta->tile_sums().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasTileNullCounts()) {
+      for (const auto& t : frag_meta_reader.getTileNullCounts()) {
+        auto last = frag_meta->tile_null_counts().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasFragmentMins()) {
+      for (const auto& t : frag_meta_reader.getFragmentMins()) {
+        auto last = frag_meta->fragment_mins().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasFragmentMaxs()) {
+      for (const auto& t : frag_meta_reader.getFragmentMaxs()) {
+        auto last = frag_meta->fragment_maxs().emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+    }
+    if (frag_meta_reader.hasFragmentSums()) {
+      frag_meta->fragment_sums().resize(
+          frag_meta_reader.getFragmentSums().size());
+      std::copy(
+          frag_meta_reader.getFragmentSums().begin(),
+          frag_meta_reader.getFragmentSums().end(),
+          frag_meta->fragment_sums().begin());
+    }
+    if (frag_meta_reader.hasFragmentNullCounts()) {
+      frag_meta->fragment_null_counts().resize(
+          frag_meta_reader.getFragmentNullCounts().size());
+      std::copy(
+          frag_meta_reader.getFragmentNullCounts().begin(),
+          frag_meta_reader.getFragmentNullCounts().end(),
+          frag_meta->fragment_null_counts().begin());
+    }
+    frag_meta->version() = frag_meta_reader.getVersion();
+    if (frag_meta_reader.hasTimestampRange()) {
+      frag_meta->timestamp_range() = std::make_pair(
+          frag_meta_reader.getTimestampRange()[0],
+          frag_meta_reader.getTimestampRange()[1]);
+    }
+    frag_meta->last_tile_cell_num() = frag_meta_reader.getLastTileCellNum();
+
+    if (frag_meta_reader.hasNonEmptyDomain()) {
+      auto reader = frag_meta_reader.getNonEmptyDomain();
+      auto&& [status, ndrange] = utils::deserialize_non_empty_domain_rv(reader);
+      RETURN_NOT_OK(status);
+      frag_meta->non_empty_domain() = std::move(*ndrange);
+    }
+    if (frag_meta_reader.hasRtree()) {
+      auto data = frag_meta_reader.getRtree();
+      auto cb = ConstBuffer(data.begin(), data.size());
+      auto& domain = query.array_schema().domain();
+      frag_meta->rtree().deserialize(&cb, &domain, frag_meta->version());
+    }
+  }
+
+  if (state_reader.hasLastCellCoords()) {
+    auto single_coord_reader = state_reader.getLastCellCoords();
+    if (single_coord_reader.hasCoords() &&
+        single_coord_reader.hasSingleOffset() &&
+        single_coord_reader.hasSizes()) {
+      std::vector<std::vector<uint8_t>> coords;
+      std::vector<uint64_t> sizes;
+      std::vector<uint64_t> single_offset;
+      for (const auto& t : single_coord_reader.getCoords()) {
+        auto last = coords.emplace_back(t.size());
+        std::copy(t.begin(), t.end(), last.begin());
+      }
+
+      sizes.resize(single_coord_reader.getSizes().size());
+      std::copy(
+          single_coord_reader.getSizes().begin(),
+          single_coord_reader.getSizes().end(),
+          sizes.begin());
+      single_offset.resize(single_coord_reader.getSingleOffset().size());
+      std::copy(
+          single_coord_reader.getSingleOffset().begin(),
+          single_coord_reader.getSingleOffset().end(),
+          single_offset.begin());
+
+      write_state->last_cell_coords_.emplace(
+          query.array_schema(), coords, sizes, single_offset);
+    }
+  }
+
+  write_state->last_hilbert_value_ = state_reader.getLastHilbertValue();
+
   return Status::Ok();
 }
 
@@ -2475,6 +2668,7 @@ Status global_write_state_to_capnp(
 }
 
 Status global_write_state_from_capnp(
+    const Query& query,
     const capnp::GlobalWriteState::Builder& state_reader,
     GlobalOrderWriter::GlobalWriteState* write_state) {
   return LOG_STATUS(Status_SerializationError(
