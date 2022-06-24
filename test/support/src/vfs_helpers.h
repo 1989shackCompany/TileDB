@@ -33,7 +33,7 @@
 #ifndef TILEDB_VFS_HELPERS_H
 #define TILEDB_VFS_HELPERS_H
 
-#include "test/src/helpers.h"
+#include "test/support/src/helpers.h"
 
 #ifdef _WIN32
 #include "tiledb/sm/filesystem/win.h"
