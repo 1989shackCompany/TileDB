@@ -45,7 +45,6 @@
 #include "tiledb/sm/query/query_buffer.h"
 #include "tiledb/sm/query/readers/reader_base.h"
 #include "tiledb/sm/subarray/tile_cell_slab_iter.h"
-#include "tiledb/sm/subarray/tile_cell_slab_iter.h"
 
 using namespace tiledb::common;
 
