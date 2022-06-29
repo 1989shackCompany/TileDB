@@ -141,6 +141,15 @@ Status Array::open_without_fragments(
     if (rest_client == nullptr)
       return LOG_STATUS(Status_ArrayError(
           "Cannot open array; remote array with no REST client."));
+    if (!use_refactored_array_open()) {
+      auto&& [st, array_schema_latest] =
+          rest_client->get_array_schema_from_rest(array_uri_);
+      RETURN_NOT_OK(st);
+      array_schema_latest_ = array_schema_latest.value();
+    } else {
+      RETURN_NOT_OK(rest_client->post_array_from_rest(array_uri_, this));
+    }
+
     auto&& [st, array_schema_latest] =
         rest_client->get_array_schema_from_rest(array_uri_);
     RETURN_NOT_OK(st);
@@ -1064,5 +1073,18 @@ Status Array::compute_non_empty_domain() {
   return Status::Ok();
 }
 
+bool Array::use_refactored_array_open() const {
+  auto found = false;
+  auto refactored_array_open = false;
+  auto status = config_.get<bool>(
+      "rest.use_refactored_array_open", &refactored_array_open, &found);
+  if (!status.ok() || !found) {
+    throw std::runtime_error(
+        "Cannot get use_refactored_array_open configuration option from "
+        "config");
+  }
+
+  return refactored_array_open;
+}
 }  // namespace sm
 }  // namespace tiledb

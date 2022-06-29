@@ -514,6 +514,9 @@ class Array {
 
   /** Computes the non-empty domain of the array. */
   Status compute_non_empty_domain();
+
+  /** Checks the config to see if refactored array open should be used. */
+  bool use_refactored_array_open() const;
 };
 
 }  // namespace sm
