@@ -149,17 +149,13 @@ shared_ptr<tiledb::sm::Filter> tiledb::sm::FilterCreate::deserialize(
           HERE(), compressor, compression_level, version);
     }
     case FilterType::FILTER_BIT_WIDTH_REDUCTION: {
+      /* Note: No validation is possible on max_window_size;
+        no actual limit, though usable limit is likely in the low 1000s. */
       uint32_t max_window_size;
       st = buff->read(&max_window_size, sizeof(uint32_t));
       if (!st.ok()) {
         throw std::runtime_error(
             "[FilterCreate::deserialize] Failed to load maximum window size");
-      }
-      if (max_window_size > 1024) {
-        throw std::logic_error(
-            "[FilterCreate::deserialize] " + std::to_string(max_window_size) +
-            " is not valid as a bit width reduction filter maximum window "
-            "size");
       }
       return make_shared<BitWidthReductionFilter>(HERE(), max_window_size);
     }
@@ -174,11 +170,6 @@ shared_ptr<tiledb::sm::Filter> tiledb::sm::FilterCreate::deserialize(
         throw std::runtime_error(
             "[FilterCreate::deserialize] Failed to load maximum window size");
       } else {
-        if (max_window_size > 1024) {
-          throw std::logic_error(
-              "[FilterCreate::deserialize] " + std::to_string(max_window_size) +
-              " is not valid as a positive delta filter maximum window size");
-        }
         return make_shared<PositiveDeltaFilter>(HERE(), max_window_size);
       }
     }
