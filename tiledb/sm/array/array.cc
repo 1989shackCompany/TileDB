@@ -138,9 +138,10 @@ Status Array::open_without_fragments(
 
   if (remote_) {
     auto rest_client = storage_manager_->rest_client();
-    if (rest_client == nullptr)
+    if (rest_client == nullptr) {
       return LOG_STATUS(Status_ArrayError(
           "Cannot open array; remote array with no REST client."));
+    }
     if (!use_refactored_array_open()) {
       auto&& [st, array_schema_latest] =
           rest_client->get_array_schema_from_rest(array_uri_);
@@ -149,11 +150,6 @@ Status Array::open_without_fragments(
     } else {
       RETURN_NOT_OK(rest_client->post_array_from_rest(array_uri_, this));
     }
-
-    auto&& [st, array_schema_latest] =
-        rest_client->get_array_schema_from_rest(array_uri_);
-    RETURN_NOT_OK(st);
-    array_schema_latest_ = array_schema_latest.value();
   } else {
     try {
       array_dir_ = ArrayDirectory(
@@ -283,11 +279,14 @@ Status Array::open(
       return LOG_STATUS(Status_ArrayError(
           "Cannot open array; remote array with no REST client."));
     }
-
-    auto&& [st, array_schema_latest] =
-        rest_client->get_array_schema_from_rest(array_uri_);
-    RETURN_NOT_OK(st);
-    array_schema_latest_ = array_schema_latest.value();
+    if (!use_refactored_array_open()) {
+      auto&& [st, array_schema_latest] =
+          rest_client->get_array_schema_from_rest(array_uri_);
+      RETURN_NOT_OK(st);
+      array_schema_latest_ = array_schema_latest.value();
+    } else {
+      RETURN_NOT_OK(rest_client->post_array_from_rest(array_uri_, this));
+    }
   } else if (query_type == QueryType::READ) {
     try {
       array_dir_ = ArrayDirectory(
