@@ -725,9 +725,7 @@ void FragmentMetadata::compute_tile_bitmap(
   rtree_.compute_tile_bitmap(range, d, tile_bitmap);
 }
 
-Status FragmentMetadata::init(const NDRange& non_empty_domain) {
-  // For easy reference
-  auto num = num_dims_and_attrs();
+Status FragmentMetadata::init_domain(const NDRange& non_empty_domain) {
   auto& domain{array_schema_->domain()};
 
   // Sanity check
@@ -750,6 +748,15 @@ Status FragmentMetadata::init(const NDRange& non_empty_domain) {
     domain_ = non_empty_domain_;
     domain.expand_to_tiles(&domain_);
   }
+
+  return Status::Ok();
+}
+
+Status FragmentMetadata::init(const NDRange& non_empty_domain) {
+  // For easy reference
+  auto num = num_dims_and_attrs();
+
+  RETURN_NOT_OK(init_domain(non_empty_domain));
 
   // Set last tile cell number
   last_tile_cell_num_ = 0;
@@ -1146,8 +1153,9 @@ uint64_t FragmentMetadata::tile_index_base() const {
 }
 
 uint64_t FragmentMetadata::tile_num() const {
-  if (dense_)
+  if (dense_) {
     return array_schema_->domain().tile_num(domain_);
+  }
 
   return sparse_tile_num_;
 }
@@ -4809,6 +4817,14 @@ void FragmentMetadata::build_idx_map() {
     idx_map_[constants::timestamps] =
         array_schema_->attribute_num() + 1 + array_schema_->dim_num();
   }
+}
+
+void FragmentMetadata::set_schema_name(const std::string& name) {
+  array_schema_name_ = name;
+}
+
+void FragmentMetadata::set_dense(bool dense) {
+  dense_ = dense;
 }
 
 // Explicit template instantiations
