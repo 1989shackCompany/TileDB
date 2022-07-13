@@ -295,6 +295,7 @@ if (TILEDB_TESTS)
   add_dependencies(tests unit_range)
   add_dependencies(tests unit_delete_condition)
   add_dependencies(tests unit_ast)
+  add_dependencies(tests unit_serializers)
 
   if (TILEDB_WEBP)
     add_dependencies(tests unit_link_webp)
