@@ -343,12 +343,10 @@ TEST_CASE_METHOD(
     REQUIRE_TILEDB_OK(tiledb_array_close(ctx, labelled_array));
     tiledb_array_free(&labelled_array);
   }
-  /*
-  / Check data is as expected.
+  // Check data is as expected.
   for (uint32_t ii{0}; ii < 16; ++ii) {
     CHECK(label_data[ii] == indexed_array_label_data[ii]);
   }
-  */
   for (uint32_t ii{0}; ii < 16; ++ii) {
     CHECK(label_data[ii] == labelled_array_label_data[ii]);
   }
