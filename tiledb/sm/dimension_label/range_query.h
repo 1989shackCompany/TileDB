@@ -90,6 +90,9 @@ class RangeQuery {
   Range computed_index_range_;
   Query lower_bound_query_;
   Query upper_bound_query_;
+  std::function<bool(const Range& range1, const Range& range2)>
+      label_range_mismatch_;
+  std::function<void(Range& range)> fix_index_range_;
   QueryStatus status_{QueryStatus::UNINITIALIZED};
 };
 
