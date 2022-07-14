@@ -54,6 +54,11 @@ inline Status Status_RangeQueryError(const std::string& msg) {
  * This class should be considered deprecated at creation. This RangeQuery
  * should be replaced with a range strategy that can handle multiple ranges
  * inside a single query.
+ *
+ * The range query assumes that the index values for the dimension label index
+ * are consecutive values that are increasing or decreasing and that there is
+ * no gaps in the label.
+ *
  */
 class RangeQuery {
  public:
@@ -69,16 +74,26 @@ class RangeQuery {
   DISABLE_COPY_AND_COPY_ASSIGN(RangeQuery);
   DISABLE_MOVE_AND_MOVE_ASSIGN(RangeQuery);
 
+  /** Cancel the query. */
   Status cancel();
+
+  /**
+   * Finalize the query and update the computed index range if it contains an
+   * extra value.
+   */
   Status finalize();
 
+  /** Returns the index range computed by the range query. */
   inline const Range& index_range() const {
     return computed_index_range_;
   }
 
+  /** Returns the status of the query. */
   inline QueryStatus status() const {
     return status_;
   }
+
+  /** Submits the query. */
   Status submit();
 
  private:
@@ -91,7 +106,7 @@ class RangeQuery {
   Query lower_bound_query_;
   Query upper_bound_query_;
   std::function<bool(const Range& range1, const Range& range2)>
-      label_range_mismatch_;
+      has_extra_range_element_;
   std::function<void(Range& range)> fix_index_range_;
   QueryStatus status_{QueryStatus::UNINITIALIZED};
 };

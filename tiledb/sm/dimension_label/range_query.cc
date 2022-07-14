@@ -64,6 +64,11 @@ std::function<bool(const Range&, const Range&)> label_upper_bound_greater_than(
 
 std::function<void(Range& range)> index_range_fixer(
     LabelOrder order, Datatype type) {
+  if (order != LabelOrder::INCREASING_LABELS &&
+      order != LabelOrder::DECREASING_LABELS)
+    throw std::invalid_argument(
+        "Support for reading ranges is only implemented for increasing and "
+        "decreasing labels.");
   switch (type) {
     case Datatype::INT8:
       return order == LabelOrder::INCREASING_LABELS ?
@@ -144,15 +149,10 @@ RangeQuery::RangeQuery(
     , computed_index_range_{dimension_label->index_dimension()->domain()}
     , lower_bound_query_{storage_manager, dimension_label->labelled_array()}
     , upper_bound_query_{storage_manager, dimension_label->labelled_array()}
-    , label_range_mismatch_{label_upper_bound_greater_than(
+    , has_extra_range_element_{label_upper_bound_greater_than(
           dimension_label->label_dimension()->type())}
     , fix_index_range_{index_range_fixer(
           order_, dimension_label->index_attribute()->type())} {
-  if (order_ != LabelOrder::INCREASING_LABELS &&
-      order_ != LabelOrder::DECREASING_LABELS)
-    throw std::invalid_argument(
-        "Support for reading ranges is only implemented for increasing and "
-        "decreasing labels.");
   const auto label_dim = dimension_label->label_dimension();
   const auto label_domain = label_dim->domain();
   const auto label_name = label_dim->name();
@@ -222,7 +222,7 @@ Status RangeQuery::finalize() {
   //
   // For decreasing labels, if the computed label upper bound is greater than
   // the input range, we need to increase the range to the next value.
-  if (label_range_mismatch_(computed_label_range_, input_label_range_))
+  if (has_extra_range_element_(computed_label_range_, input_label_range_))
     fix_index_range_(computed_index_range_);
   status_ = QueryStatus::COMPLETED;
   RETURN_NOT_OK(lower_bound_query_.finalize());
