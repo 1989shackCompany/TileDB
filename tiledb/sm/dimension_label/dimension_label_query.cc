@@ -63,7 +63,7 @@ Status OrderedLabelsQuery::cancel() {
   return Status::Ok();
 }
 
-Status OrderedLabelsQuery::create_data_query() {
+Status OrderedLabelsQuery::initialize_data_query() {
   /**
    * For reading data, only the indexed array is needed. For writing to the
    * dimension label, we need to open both the indexed and labelled arrays.

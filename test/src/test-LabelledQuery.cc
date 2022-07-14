@@ -255,7 +255,7 @@ TEST_CASE_METHOD(
   REQUIRE_TILEDB_STATUS_OK(status);
   // Create dimension label data query.
   OrderedLabelsQuery query{dimension_label, ctx->ctx_->storage_manager()};
-  status = query.create_data_query();
+  status = query.initialize_data_query();
   REQUIRE_TILEDB_STATUS_OK(status);
 
   // Set data for query.
@@ -432,7 +432,7 @@ TEST_CASE_METHOD(
 
     // Create dimension label data query.
     OrderedLabelsQuery query{dimension_label, ctx->ctx_->storage_manager()};
-    status = query.create_data_query();
+    status = query.initialize_data_query();
     if (!status.ok())
       INFO("Create data query: " + status.to_string());
     REQUIRE(status.ok());

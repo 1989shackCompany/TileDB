@@ -1639,7 +1639,7 @@ Status Query::set_label_data_buffer(
   auto label_query = label_map_.find(name);
   if (label_query == label_map_.end())
     return Status_QueryError("No label with name '" + name + "'.");
-  RETURN_NOT_OK(label_query->second->create_data_query());
+  RETURN_NOT_OK(label_query->second->initialize_data_query());
   return label_query->second->set_label_data_buffer(
       buffer, buffer_size, check_null_buffers);
 }

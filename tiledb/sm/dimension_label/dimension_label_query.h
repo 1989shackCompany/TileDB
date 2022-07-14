@@ -77,13 +77,13 @@ class DimensionLabelQuery {
   virtual Status cancel() = 0;
 
   /** TODO */
-  virtual Status create_data_query() = 0;
-
-  /** TODO */
   virtual Status finalize() = 0;
 
   /** TODO */
   virtual tuple<Status, Range> get_index_range() const = 0;
+
+  /** TODO */
+  virtual Status initialize_data_query() = 0;
 
   /** TODO */
   virtual Status resolve_labels() = 0;
@@ -145,11 +145,11 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
 
   Status cancel() override;
 
-  Status create_data_query() override;
-
   Status finalize() override;
 
   tuple<Status, Range> get_index_range() const override;
+
+  Status initialize_data_query() override;
 
   Status resolve_labels() override;
 
