@@ -30,8 +30,8 @@
  * TODO: Add description
  */
 
-#ifndef TILEDB_RANGE_QUERY_H
-#define TILEDB_RANGE_QUERY_H
+#ifndef TILEDB_DIMENSION_LABEL_RANGE_QUERY_H
+#define TILEDB_DIMENSION_LABEL_RANGE_QUERY_H
 
 #include <string>
 #include "tiledb/sm/dimension_label/dimension_label.h"
@@ -51,7 +51,7 @@ inline Status Status_RangeQueryError(const std::string& msg) {
 };
 
 /**
- * This class should be considered deprecated at creation. This RangeQuery
+ * This class should be considered deprecated at creation. This class
  * should be replaced with a range strategy that can handle multiple ranges
  * inside a single query.
  *
@@ -60,19 +60,19 @@ inline Status Status_RangeQueryError(const std::string& msg) {
  * no gaps in the label.
  *
  */
-class RangeQuery {
+class DimensionLabelRangeQuery {
  public:
-  RangeQuery() = delete;
+  DimensionLabelRangeQuery() = delete;
 
-  RangeQuery(
+  DimensionLabelRangeQuery(
       DimensionLabel* dimension_label,
       StorageManager* storage_manager,
       const void* start,
       const void* end);
 
   /** Disable copy and move. */
-  DISABLE_COPY_AND_COPY_ASSIGN(RangeQuery);
-  DISABLE_MOVE_AND_MOVE_ASSIGN(RangeQuery);
+  DISABLE_COPY_AND_COPY_ASSIGN(DimensionLabelRangeQuery);
+  DISABLE_MOVE_AND_MOVE_ASSIGN(DimensionLabelRangeQuery);
 
   /** Cancel the query. */
   Status cancel();

@@ -1,4 +1,4 @@
-#include "tiledb/sm/dimension_label/range_query.h"
+#include "tiledb/sm/dimension_label/dimension_label_range_query.h"
 #include "tiledb/sm/array/array.h"
 #include "tiledb/sm/array_schema/attribute.h"
 #include "tiledb/sm/array_schema/dimension.h"
@@ -134,7 +134,7 @@ std::function<void(Range& range)> index_range_fixer(
   }
 }
 
-RangeQuery::RangeQuery(
+DimensionLabelRangeQuery::DimensionLabelRangeQuery(
     DimensionLabel* dimension_label,
     StorageManager* storage_manager,
     const void* start,
@@ -200,14 +200,14 @@ RangeQuery::RangeQuery(
   }
 }
 
-Status RangeQuery::cancel() {
+Status DimensionLabelRangeQuery::cancel() {
   // TODO: Change to cancel both before returning status error
   RETURN_NOT_OK(lower_bound_query_.cancel());
   RETURN_NOT_OK(upper_bound_query_.cancel());
   return Status::Ok();
 }
 
-Status RangeQuery::finalize() {
+Status DimensionLabelRangeQuery::finalize() {
   if (!lower_bound_query_.has_results() || !upper_bound_query_.has_results()) {
     status_ = QueryStatus::FAILED;
     lower_bound_query_.finalize();
@@ -230,7 +230,7 @@ Status RangeQuery::finalize() {
   return Status::Ok();
 }
 
-Status RangeQuery::submit() {
+Status DimensionLabelRangeQuery::submit() {
   // TODO: Change to cancel both before returning status error
   auto status = lower_bound_query_.submit();
   if (!status.ok()) {

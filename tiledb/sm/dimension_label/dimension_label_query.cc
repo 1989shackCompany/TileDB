@@ -37,8 +37,12 @@ Status OrderedLabelsQuery::add_label_range(
   if (query_type_ == QueryType::WRITE)
     return Status_DimensionLabelQueryError(
         "Cannot add range; DimensionLabel writes cannot be set by label.");
-  range_query_ = tdb_unique_ptr<RangeQuery>(tdb_new(
-      RangeQuery, dimension_label_.get(), storage_manager_, start, end));
+  range_query_ = tdb_unique_ptr<DimensionLabelRangeQuery>(tdb_new(
+      DimensionLabelRangeQuery,
+      dimension_label_.get(),
+      storage_manager_,
+      start,
+      end));
   return Status::Ok();
 }
 

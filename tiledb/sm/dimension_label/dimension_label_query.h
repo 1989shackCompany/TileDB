@@ -35,7 +35,7 @@
 
 #include <string>
 #include "tiledb/sm/dimension_label/dimension_label.h"
-#include "tiledb/sm/dimension_label/range_query.h"
+#include "tiledb/sm/dimension_label/dimension_label_range_query.h"
 #include "tiledb/sm/enums/query_status.h"
 #include "tiledb/sm/query/query.h"
 
@@ -185,7 +185,7 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
 
   shared_ptr<Logger> logger_;
 
-  tdb_unique_ptr<RangeQuery> range_query_;
+  tdb_unique_ptr<DimensionLabelRangeQuery> range_query_;
 
   tdb_unique_ptr<Query> labelled_array_query_;
 
