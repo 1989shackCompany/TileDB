@@ -439,8 +439,9 @@ TEST_CASE_METHOD(
   int32_t val3 = 9;
   qc3.init("a1", &val3, sizeof(int32_t), TILEDB_EQ);
 
-  // Write one more condition.
+  // Write one more condition, in between the existing conditions, this will
+  // ensure the conditions get sorted.
   write_delete_condition(qc3, 4);
 
-  check_delete_conditions({qc, qc2, qc3}, 8);
+  check_delete_conditions({qc, qc3, qc2}, 8);
 }
