@@ -80,6 +80,7 @@ struct DeletesFx {
       tiledb_layout_t layout,
       uint64_t timestamp,
       bool encrypt = false);
+  void consolidate_commits_sparse(bool vacuum);
   void write_delete_condition(
       QueryCondition& qc,
       uint64_t timestamp,
@@ -230,6 +231,16 @@ void DeletesFx::read_sparse(
   array->close();
 }
 
+void DeletesFx::consolidate_commits_sparse(bool vacuum) {
+  auto config = ctx_.config();
+  config["sm.consolidation.mode"] = "commits";
+  Array::consolidate(ctx_, SPARSE_ARRAY_NAME, &config);
+
+  if (vacuum) {
+    REQUIRE_NOTHROW(Array::vacuum(ctx_, SPARSE_ARRAY_NAME, &config));
+  }
+}
+
 void DeletesFx::write_delete_condition(
     QueryCondition& qc, uint64_t timestamp, bool encrypt, bool error_expected) {
   // Open array.
@@ -365,7 +376,7 @@ TEST_CASE_METHOD(
 TEST_CASE_METHOD(
     DeletesFx,
     "CPP API: Test open for delete invalid version",
-    "[cppapi][deletes][][invalid-version]") {
+    "[cppapi][deletes][invalid-version]") {
   if constexpr (is_experimental_build) {
     return;
   }
@@ -383,4 +394,53 @@ TEST_CASE_METHOD(
       exception ==
       "[TileDB::Array] Error: Cannot open array for deletes; Array format "
       "version (11) is smaller than the minimum supported version (16).");
+}
+
+TEST_CASE_METHOD(
+    DeletesFx,
+    "CPP API: Deletes, commits consolidation",
+    "[cppapi][deletes][commits][consolidation]") {
+  remove_sparse_array();
+
+  create_sparse_array();
+
+  bool vacuum = GENERATE(false, true);
+
+  // Write fragment.
+  write_sparse({0, 1, 2, 3}, {1, 1, 1, 2}, {1, 2, 4, 3}, 1);
+
+  // Define query condition (a1 < 2).
+  QueryCondition qc(ctx_);
+  int32_t val = 2;
+  qc.init("a1", &val, sizeof(int32_t), TILEDB_LT);
+
+  // Write condition.
+  write_delete_condition(qc, 3);
+
+  // Write fragment.
+  write_sparse({0, 1, 2, 3}, {1, 1, 1, 2}, {1, 2, 4, 3}, 5);
+
+  // Define query condition (a1 > 4).
+  QueryCondition qc2(ctx_);
+  int32_t val2 = 4;
+  qc2.init("a1", &val2, sizeof(int32_t), TILEDB_GT);
+
+  // Write condition.
+  write_delete_condition(qc2, 7);
+
+  consolidate_commits_sparse(vacuum);
+
+  check_delete_conditions({qc}, 4);
+
+  check_delete_conditions({qc, qc2}, 8);
+
+  // Define query condition (a1 == 9).
+  QueryCondition qc3(ctx_);
+  int32_t val3 = 9;
+  qc3.init("a1", &val3, sizeof(int32_t), TILEDB_EQ);
+
+  // Write one more condition.
+  write_delete_condition(qc3, 4);
+
+  check_delete_conditions({qc, qc2, qc3}, 8);
 }
