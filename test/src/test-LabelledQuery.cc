@@ -317,8 +317,7 @@ TEST_CASE_METHOD(
 
       // Set index ranges.
       std::vector<uint64_t> index_range{9, 12};
-      std::vector<Range> ranges{Range(&index_range[0], 2 * sizeof(uint64_t))};
-      status = query.set_index_ranges(ranges);
+      status = query.add_index_range(&index_range[0], &index_range[1], nullptr);
       if (!status.ok())
         INFO("Set index ranges: " + status.to_string());
       REQUIRE(status.ok());

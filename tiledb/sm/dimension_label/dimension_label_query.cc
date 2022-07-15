@@ -21,7 +21,29 @@ OrderedLabelsQuery::OrderedLabelsQuery(
     , range_query_{nullptr}
     , labelled_array_query_{nullptr}
     , indexed_array_query_{nullptr}
+    , label_ranges_{dimension_label_->label_dimension()->type(),
+                    dimension_label_->label_dimension()->domain(),
+                    false,
+                    true}
+    , index_ranges_{dimension_label_->index_dimension()->type(),
+                    dimension_label_->index_dimension()->domain(),
+                    false,
+                    true}
     , query_type_{dimension_label_->query_type()} {
+}
+
+Status OrderedLabelsQuery::add_index_range(
+    const void* start, const void* end, const void* stride) {
+  if (!indexed_array_query_)
+    return Status_DimensionLabelQueryError(
+        "Cannot set subarray. Data query not initialized.");
+  if (query_type_ == QueryType::WRITE)
+    return Status_DimensionLabelQueryError(
+        "Cannot set subarray. Currently dimension labels only support writing "
+        "the full array.");
+  auto&& [error_status, oob_warning] = index_ranges_.add_range(start, end);
+  RETURN_NOT_OK(error_status);
+  return indexed_array_query_->add_range(0, start, end, stride);
 }
 
 Status OrderedLabelsQuery::add_label_range(
@@ -37,6 +59,8 @@ Status OrderedLabelsQuery::add_label_range(
   if (query_type_ == QueryType::WRITE)
     return Status_DimensionLabelQueryError(
         "Cannot add range; DimensionLabel writes cannot be set by label.");
+  auto&& [error_status, oob_warning] = label_ranges_.add_range(start, end);
+  RETURN_NOT_OK(error_status);
   range_query_ = tdb_unique_ptr<DimensionLabelRangeQuery>(tdb_new(
       DimensionLabelRangeQuery,
       dimension_label_.get(),
@@ -143,6 +167,8 @@ Status OrderedLabelsQuery::set_index_ranges(const std::vector<Range>& ranges) {
     return Status_DimensionLabelQueryError(
         "Cannot set subarray. Currently dimension labels only support writing "
         "the full array.");
+  for (const auto& range : ranges)
+    index_ranges_.add_range_unrestricted(range);
   Subarray subarray{dimension_label_->indexed_array().get(),
                     Layout::ROW_MAJOR,
                     stats_,

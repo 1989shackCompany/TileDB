@@ -58,6 +58,10 @@ class DimensionLabelQuery {
   virtual ~DimensionLabelQuery() = default;
 
   /** TODO */
+  virtual Status add_index_range(
+      const void* start, const void* end, const void* stride) = 0;
+
+  /** TODO */
   virtual Status add_label_range(
       const void* start, const void* end, const void* stride) = 0;
 
@@ -134,6 +138,9 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
   DISABLE_COPY_AND_COPY_ASSIGN(OrderedLabelsQuery);
   DISABLE_MOVE_AND_MOVE_ASSIGN(OrderedLabelsQuery);
 
+  Status add_index_range(
+      const void* start, const void* end, const void* stride) override;
+
   Status add_label_range(
       const void* start, const void* end, const void* stride) override;
 
@@ -190,6 +197,10 @@ class OrderedLabelsQuery : public DimensionLabelQuery {
   tdb_unique_ptr<Query> labelled_array_query_;
 
   tdb_unique_ptr<Query> indexed_array_query_;
+
+  RangeSetAndSuperset label_ranges_;
+
+  RangeSetAndSuperset index_ranges_;
 
   QueryType query_type_;
 };

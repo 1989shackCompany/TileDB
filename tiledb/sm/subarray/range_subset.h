@@ -359,6 +359,17 @@ class RangeSetAndSuperset {
       Range& range, const bool read_range_oob_error = true);
 
   /**
+   * Adds a range to the range set after checking validity.
+   *
+   * If the ranges are currently implicitly initialized, then they will be
+   * cleared before the new range is added.
+   */
+  tuple<Status, optional<std::string>> add_range(
+      const void* start,
+      const void* end,
+      const bool read_range_oob_error = true);
+
+  /**
    * Adds a range to the range manager without performing any checkes.
    *
    * If the ranges are currently implicitly initialized, then they will be
@@ -416,6 +427,8 @@ class RangeSetAndSuperset {
   Status sort_ranges(ThreadPool* const compute_tp);
 
  private:
+  Datatype type_;
+
   /** Pointer to typed implementation details. */
   shared_ptr<detail::RangeSetAndSupersetImpl> impl_ = nullptr;
 

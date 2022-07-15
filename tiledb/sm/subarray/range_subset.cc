@@ -110,7 +110,8 @@ RangeSetAndSuperset::RangeSetAndSuperset(
     const Range& superset,
     bool implicitly_initialize,
     bool coalesce_ranges)
-    : impl_(range_subset_internals(datatype, superset, coalesce_ranges))
+    : type_(datatype)
+    , impl_(range_subset_internals(datatype, superset, coalesce_ranges))
     , is_implicitly_initialized_(implicitly_initialize) {
   if (implicitly_initialize)
     ranges_.emplace_back(superset);
@@ -122,6 +123,24 @@ Status RangeSetAndSuperset::sort_ranges(ThreadPool* const compute_tp) {
 
 tuple<Status, optional<std::string>> RangeSetAndSuperset::add_range(
     Range& range, const bool read_range_oob_error) {
+  // Check range is valid
+  impl_->check_range_is_valid(range);
+  // Check or crop range (depending on if range out-of-bounds is an error),
+  // then add range to array.
+  if (read_range_oob_error) {
+    RETURN_NOT_OK_TUPLE(impl_->check_range_is_subset(range), nullopt);
+    auto error_status = add_range_unrestricted(range);
+    return {error_status, nullopt};
+  } else {
+    auto warn_message = impl_->crop_range_with_warning(range);
+    auto error_status = add_range_unrestricted(range);
+    return {error_status, warn_message};
+  }
+}
+
+tuple<Status, optional<std::string>> RangeSetAndSuperset::add_range(
+    const void* start, const void* end, const bool read_range_oob_error) {
+  Range range{start, end, datatype_size(type_)};
   // Check range is valid
   impl_->check_range_is_valid(range);
   // Check or crop range (depending on if range out-of-bounds is an error),
